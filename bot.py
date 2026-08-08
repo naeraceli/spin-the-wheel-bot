@@ -110,6 +110,27 @@ async def deny_access(update: Update):
 
 
 # ==========================================
+# CREATE SPIN BUTTONS
+# ==========================================
+
+def spin_keyboard():
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "🔄 NEXT",
+                    callback_data="next_spin",
+                ),
+                InlineKeyboardButton(
+                    "🎁 CLAIM",
+                    callback_data="claim_prize",
+                ),
+            ]
+        ]
+    )
+
+
+# ==========================================
 # /START
 # ==========================================
 
@@ -125,6 +146,59 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ==========================================
+# GET AVAILABLE PRIZES
+# ==========================================
+
+def get_available_prizes():
+    return [
+        prize
+        for prize, quantity in prizes.items()
+        if quantity > 0
+    ]
+
+
+# ==========================================
+# CREATE NEW SPIN MESSAGE
+# ==========================================
+
+async def send_new_spin_message(
+    chat_id,
+    context,
+):
+    available_prizes = get_available_prizes()
+
+    if not available_prizes:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                "🎡 *The Spin the Wheel is empty!*\n\n"
+                "All prizes have been claimed. 🎁"
+            ),
+            parse_mode="Markdown",
+        )
+        return None
+
+    selected_prize = random.choice(available_prizes)
+
+    context.user_data["current_prize"] = selected_prize
+
+    message = await context.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            "🎡 *SPINNING...*\n\n"
+            f"🎁 *Your prize:* {selected_prize}\n\n"
+            "Congratulations! 🥳"
+        ),
+        reply_markup=spin_keyboard(),
+        parse_mode="Markdown",
+    )
+
+    context.user_data["current_spin_message_id"] = message.message_id
+
+    return message
+
+
+# ==========================================
 # /SPIN
 # ==========================================
 
@@ -133,42 +207,13 @@ async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await deny_access(update)
         return
 
-    available_prizes = [
-        prize
-        for prize, quantity in prizes.items()
-        if quantity > 0
-    ]
+    # Start a completely new spin session.
+    context.user_data["current_prize"] = None
+    context.user_data["waiting_for_username"] = False
 
-    if not available_prizes:
-        await update.message.reply_text(
-            "🎡 The Spin the Wheel is empty!\n\n"
-            "All prizes have been claimed. 🎁"
-        )
-        return
-
-    selected_prize = random.choice(available_prizes)
-
-    context.user_data["current_prize"] = selected_prize
-
-    keyboard = [
-        [
-            InlineKeyboardButton(
-                "🔄 NEXT",
-                callback_data="next_spin",
-            ),
-            InlineKeyboardButton(
-                "🎁 CLAIM",
-                callback_data="claim_prize",
-            ),
-        ]
-    ]
-
-    await update.message.reply_text(
-        "🎡 *SPINNING...*\n\n"
-        f"🎁 *Your prize:* {selected_prize}\n\n"
-        "Congratulations! 🥳",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="Markdown",
+    await send_new_spin_message(
+        update.effective_chat.id,
+        context,
     )
 
 
@@ -189,6 +234,18 @@ async def button_handler(
         )
         return
 
+    current_message_id = context.user_data.get(
+        "current_spin_message_id"
+    )
+
+    # Only the newest spin message can be controlled.
+    if query.message.message_id != current_message_id:
+        await query.answer(
+            "⚠️ This spin is no longer active.",
+            show_alert=True,
+        )
+        return
+
     await query.answer()
 
     if query.data == "next_spin":
@@ -203,42 +260,20 @@ async def button_handler(
 # ==========================================
 
 async def next_spin(query, context):
-    available_prizes = [
-        prize
-        for prize, quantity in prizes.items()
-        if quantity > 0
-    ]
+    # The previous message stays in the chat.
+    # We simply remove its buttons so it cannot be used again.
 
-    if not available_prizes:
-        await query.edit_message_text(
-            "🎡 The Spin the Wheel is empty!\n\n"
-            "All prizes have been claimed. 🎁"
+    try:
+        await query.edit_message_reply_markup(
+            reply_markup=None
         )
-        return
+    except Exception:
+        pass
 
-    selected_prize = random.choice(available_prizes)
-
-    context.user_data["current_prize"] = selected_prize
-
-    keyboard = [
-        [
-            InlineKeyboardButton(
-                "🔄 NEXT",
-                callback_data="next_spin",
-            ),
-            InlineKeyboardButton(
-                "🎁 CLAIM",
-                callback_data="claim_prize",
-            ),
-        ]
-    ]
-
-    await query.edit_message_text(
-        "🎡 *SPINNING...*\n\n"
-        f"🎁 *Your prize:* {selected_prize}\n\n"
-        "Congratulations! 🥳",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="Markdown",
+    # Send the next spin as a NEW bubble/message.
+    await send_new_spin_message(
+        query.message.chat_id,
+        context,
     )
 
 
@@ -250,20 +285,31 @@ async def claim_prize(query, context):
     selected_prize = context.user_data.get("current_prize")
 
     if not selected_prize:
-        await query.edit_message_text(
-            "⚠️ There is no active prize to claim."
+        await query.answer(
+            "⚠️ There is no active prize to claim.",
+            show_alert=True,
         )
         return
 
     if prizes.get(selected_prize, 0) <= 0:
-        await query.edit_message_text(
-            "⚠️ Sorry, this prize has already been claimed."
+        await query.edit_message_reply_markup(
+            reply_markup=None
+        )
+
+        await query.answer(
+            "⚠️ Sorry, this prize has already been claimed.",
+            show_alert=True,
         )
         return
 
     context.user_data["waiting_for_username"] = True
 
-    await query.edit_message_text(
+    # Remove buttons while waiting for username.
+    await query.edit_message_reply_markup(
+        reply_markup=None
+    )
+
+    await query.message.reply_text(
         "🎁 *Prize selected!*\n\n"
         f"🎁 *Prize:* {selected_prize}\n\n"
         "👤 Please send the buyer's username.\n"
@@ -307,18 +353,28 @@ async def receive_username(
         )
         return
 
-    # Reduce stock ONLY after the buyer username is submitted.
+    # ======================================
+    # REDUCE STOCK
+    # ======================================
+
     prizes[selected_prize] -= 1
 
     remaining = prizes[selected_prize]
 
+    # Remove prize completely when stock reaches zero.
     if remaining <= 0:
         del prizes[selected_prize]
 
     save_prizes(prizes)
 
+    # Clear current spin state.
     context.user_data["waiting_for_username"] = False
     context.user_data["current_prize"] = None
+    context.user_data["current_spin_message_id"] = None
+
+    # ======================================
+    # CLAIM RESULT
+    # ======================================
 
     if remaining <= 0:
         stock_message = (
