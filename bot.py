@@ -44,19 +44,10 @@ INITIAL_PRIZES = {
 
 
 # ==========================================
-# IMAGE FILE MAPPING
+# IMAGE MAPPING
 # ==========================================
-# Nanti kita isi setelah 18 gambar selesai.
-#
-# Format:
-#
-# "nama hadiah": {
-#     "spin": "images/nama_spin.jpg",
-#     "claimed": "images/nama_claimed.jpg"
-# }
-#
-# Untuk sekarang dibiarkan kosong supaya bot
-# tetap bisa berjalan tanpa gambar.
+# Untuk sementara masih None.
+# Nanti setelah gambar selesai, kita isi path-nya.
 
 PRIZE_IMAGES = {
     "🎟️ Voucher diskon 25% untuk orderan custom": {
@@ -220,7 +211,7 @@ def get_available_prizes(chat_id):
 
 
 # ==========================================
-# SEND SPIN RESULT
+# SEND NEW SPIN
 # ==========================================
 
 async def send_new_spin_message(
@@ -234,31 +225,39 @@ async def send_new_spin_message(
             chat_id=chat_id,
             text=(
                 "🎡 *The Spin the Wheel is empty!*\n\n"
-                "All prizes in this chat have been claimed. 🎁"
+                "All prizes in this chat have been claimed. 🎁\n\n"
+                "Use /reload to restore all prize slots."
             ),
             parse_mode="Markdown",
         )
         return None
 
-    selected_prize = random.choice(available_prizes)
+    selected_prize = random.choice(
+        available_prizes
+    )
 
     context.user_data["current_prize"] = selected_prize
-
-    # Save which chat this spin belongs to.
     context.user_data["current_chat_id"] = chat_id
 
-    # --------------------------------------
-    # IMAGE SUPPORT
-    # --------------------------------------
+    # ======================================
+    # SPIN IMAGE
+    # ======================================
 
     image_path = PRIZE_IMAGES.get(
         selected_prize,
         {}
     ).get("spin")
 
-    if image_path and os.path.exists(image_path):
+    if (
+        image_path
+        and os.path.exists(image_path)
+    ):
 
-        with open(image_path, "rb") as image_file:
+        with open(
+            image_path,
+            "rb"
+        ) as image_file:
+
             message = await context.bot.send_photo(
                 chat_id=chat_id,
                 photo=image_file,
@@ -284,7 +283,9 @@ async def send_new_spin_message(
             parse_mode="Markdown",
         )
 
-    context.user_data["current_spin_message_id"] = message.message_id
+    context.user_data["current_spin_message_id"] = (
+        message.message_id
+    )
 
     return message
 
@@ -293,15 +294,21 @@ async def send_new_spin_message(
 # /START
 # ==========================================
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
 
-    if not is_admin(update.effective_user.id):
+    if not is_admin(
+        update.effective_user.id
+    ):
         await deny_access(update)
         return
 
     await update.message.reply_text(
         "🎡 Welcome to the Spin the Wheel!\n\n"
-        "Use /spin to start spinning."
+        "Use /spin to start spinning.\n"
+        "Use /reload to restore all prize slots."
     )
 
 
@@ -309,15 +316,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # /SPIN
 # ==========================================
 
-async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def spin(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
 
-    if not is_admin(update.effective_user.id):
+    if not is_admin(
+        update.effective_user.id
+    ):
         await deny_access(update)
         return
 
     chat_id = update.effective_chat.id
 
-    # Reset current session.
     context.user_data["current_prize"] = None
     context.user_data["waiting_for_username"] = False
     context.user_data["current_chat_id"] = chat_id
@@ -326,6 +337,47 @@ async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_new_spin_message(
         chat_id,
         context,
+    )
+
+
+# ==========================================
+# /RELOAD
+# ==========================================
+
+async def reload_prizes(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    if not is_admin(
+        update.effective_user.id
+    ):
+        await deny_access(update)
+        return
+
+    chat_id = update.effective_chat.id
+    chat_key = str(chat_id)
+
+    # Restore full inventory ONLY for this chat.
+    all_chat_prizes[chat_key] = (
+        INITIAL_PRIZES.copy()
+    )
+
+    save_all_chat_prizes(
+        all_chat_prizes
+    )
+
+    # Reset current spin session.
+    context.user_data["current_prize"] = None
+    context.user_data["waiting_for_username"] = False
+    context.user_data["current_chat_id"] = None
+    context.user_data["current_spin_message_id"] = None
+
+    await update.message.reply_text(
+        "🔄 *RELOADED!*\n\n"
+        "All 15 prize slots have been restored "
+        "for this chat. 🎡✨",
+        parse_mode="Markdown",
     )
 
 
@@ -340,19 +392,25 @@ async def button_handler(
 
     query = update.callback_query
 
-    if not is_admin(query.from_user.id):
+    if not is_admin(
+        query.from_user.id
+    ):
         await query.answer(
             "⚠️ Only admins can control the Spin the Wheel.",
             show_alert=True,
         )
         return
 
-    current_message_id = context.user_data.get(
-        "current_spin_message_id"
+    current_message_id = (
+        context.user_data.get(
+            "current_spin_message_id"
+        )
     )
 
-    # Only the newest spin can be controlled.
-    if query.message.message_id != current_message_id:
+    if (
+        query.message.message_id
+        != current_message_id
+    ):
         await query.answer(
             "⚠️ This spin is no longer active.",
             show_alert=True,
@@ -362,19 +420,27 @@ async def button_handler(
     await query.answer()
 
     if query.data == "next_spin":
-        await next_spin(query, context)
+        await next_spin(
+            query,
+            context,
+        )
 
     elif query.data == "claim_prize":
-        await claim_prize(query, context)
+        await claim_prize(
+            query,
+            context,
+        )
 
 
 # ==========================================
 # NEXT
 # ==========================================
 
-async def next_spin(query, context):
+async def next_spin(
+    query,
+    context,
+):
 
-    # Disable buttons on the old message.
     try:
         await query.edit_message_reply_markup(
             reply_markup=None
@@ -384,7 +450,6 @@ async def next_spin(query, context):
 
     chat_id = query.message.chat_id
 
-    # Send completely new bubble.
     await send_new_spin_message(
         chat_id,
         context,
@@ -395,10 +460,15 @@ async def next_spin(query, context):
 # CLAIM
 # ==========================================
 
-async def claim_prize(query, context):
+async def claim_prize(
+    query,
+    context,
+):
 
-    selected_prize = context.user_data.get(
-        "current_prize"
+    selected_prize = (
+        context.user_data.get(
+            "current_prize"
+        )
     )
 
     chat_id = query.message.chat_id
@@ -410,9 +480,18 @@ async def claim_prize(query, context):
         )
         return
 
-    chat_prizes = get_chat_prizes(chat_id)
+    chat_prizes = get_chat_prizes(
+        chat_id
+    )
 
-    if chat_prizes.get(selected_prize, 0) <= 0:
+    if (
+        chat_prizes.get(
+            selected_prize,
+            0
+        )
+        <= 0
+    ):
+
         await query.edit_message_reply_markup(
             reply_markup=None
         )
@@ -421,15 +500,20 @@ async def claim_prize(query, context):
             "⚠️ Sorry, this prize has already been claimed.",
             show_alert=True,
         )
+
         return
 
-    # Remove buttons while waiting for username.
     await query.edit_message_reply_markup(
         reply_markup=None
     )
 
-    context.user_data["waiting_for_username"] = True
-    context.user_data["current_chat_id"] = chat_id
+    context.user_data[
+        "waiting_for_username"
+    ] = True
+
+    context.user_data[
+        "current_chat_id"
+    ] = chat_id
 
     await query.message.reply_text(
         "🎁 *Prize selected!*\n\n"
@@ -449,7 +533,9 @@ async def receive_username(
     context: ContextTypes.DEFAULT_TYPE,
 ):
 
-    if not is_admin(update.effective_user.id):
+    if not is_admin(
+        update.effective_user.id
+    ):
         await deny_access(update)
         return
 
@@ -458,56 +544,86 @@ async def receive_username(
     ):
         return
 
-    username = update.message.text.strip()
+    username = (
+        update.message.text.strip()
+    )
 
-    selected_prize = context.user_data.get(
-        "current_prize"
+    selected_prize = (
+        context.user_data.get(
+            "current_prize"
+        )
     )
 
     chat_id = update.effective_chat.id
 
     if not selected_prize:
-        context.user_data["waiting_for_username"] = False
+
+        context.user_data[
+            "waiting_for_username"
+        ] = False
 
         await update.message.reply_text(
             "⚠️ There is no active prize to claim."
         )
+
         return
 
-    # Make sure the claim happens in the same chat.
-    if context.user_data.get(
-        "current_chat_id"
-    ) != chat_id:
+    if (
+        context.user_data.get(
+            "current_chat_id"
+        )
+        != chat_id
+    ):
 
         await update.message.reply_text(
             "⚠️ Please finish the active claim "
             "in the original chat."
         )
+
         return
 
-    chat_prizes = get_chat_prizes(chat_id)
+    chat_prizes = get_chat_prizes(
+        chat_id
+    )
 
-    if chat_prizes.get(selected_prize, 0) <= 0:
+    if (
+        chat_prizes.get(
+            selected_prize,
+            0
+        )
+        <= 0
+    ):
 
-        context.user_data["waiting_for_username"] = False
+        context.user_data[
+            "waiting_for_username"
+        ] = False
 
         await update.message.reply_text(
             "⚠️ Sorry, this prize has already been claimed."
         )
+
         return
 
     # ======================================
     # REDUCE STOCK FOR THIS CHAT ONLY
     # ======================================
 
-    chat_prizes[selected_prize] -= 1
+    chat_prizes[
+        selected_prize
+    ] -= 1
 
-    remaining = chat_prizes[selected_prize]
+    remaining = chat_prizes[
+        selected_prize
+    ]
 
     if remaining <= 0:
-        del chat_prizes[selected_prize]
+        del chat_prizes[
+            selected_prize
+        ]
 
-    all_chat_prizes[str(chat_id)] = chat_prizes
+    all_chat_prizes[
+        str(chat_id)
+    ] = chat_prizes
 
     save_all_chat_prizes(
         all_chat_prizes
@@ -517,19 +633,25 @@ async def receive_username(
     # RESET SESSION
     # ======================================
 
-    context.user_data["waiting_for_username"] = False
-    context.user_data["current_prize"] = None
-    context.user_data["current_chat_id"] = None
-    context.user_data["current_spin_message_id"] = None
+    context.user_data[
+        "waiting_for_username"
+    ] = False
+
+    context.user_data[
+        "current_prize"
+    ] = None
+
+    context.user_data[
+        "current_chat_id"
+    ] = None
+
+    context.user_data[
+        "current_spin_message_id"
+    ] = None
 
     # ======================================
-    # CLAIMED IMAGE
+    # CLAIMED RESULT
     # ======================================
-
-    claimed_image = PRIZE_IMAGES.get(
-        selected_prize,
-        {}
-    ).get("claimed")
 
     if remaining <= 0:
 
@@ -546,6 +668,13 @@ async def receive_username(
             f"*{remaining}*"
         )
 
+    claimed_image = (
+        PRIZE_IMAGES.get(
+            selected_prize,
+            {}
+        ).get("claimed")
+    )
+
     claimed_caption = (
         "🎉 *CLAIMED!*\n\n"
         f"👤 *Buyer:* {username}\n"
@@ -553,8 +682,11 @@ async def receive_username(
         f"{stock_message}"
     )
 
-    if claimed_image and os.path.exists(
+    if (
         claimed_image
+        and os.path.exists(
+            claimed_image
+        )
     ):
 
         with open(
@@ -582,7 +714,9 @@ async def receive_username(
 
 def main():
 
-    token = os.getenv("BOT_TOKEN")
+    token = os.getenv(
+        "BOT_TOKEN"
+    )
 
     if not token:
         raise ValueError(
@@ -606,6 +740,13 @@ def main():
         CommandHandler(
             "spin",
             spin
+        )
+    )
+
+    application.add_handler(
+        CommandHandler(
+            "reload",
+            reload_prizes
         )
     )
 
