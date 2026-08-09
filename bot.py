@@ -12,7 +12,6 @@ from telegram.ext import (
     filters,
 )
 
-
 # ==========================================
 # ADMIN IDs
 # ==========================================
@@ -24,7 +23,6 @@ ADMIN_IDS = {
     7072320975,
     7281591437,
 }
-
 
 # ==========================================
 # INITIAL PRIZE INVENTORY
@@ -42,60 +40,56 @@ INITIAL_PRIZES = {
     "⭐ Gift 50 Stars": 1,
 }
 
-
 # ==========================================
 # IMAGE MAPPING
 # ==========================================
-# Untuk sementara masih None.
-# Nanti setelah gambar selesai, kita isi path-nya.
 
 PRIZE_IMAGES = {
     "🎟️ Voucher diskon 25% untuk orderan custom": {
-        "spin": None,
+        "spin": "images/spin_25.jpg",
         "claimed": None,
     },
 
     "🎟️ Voucher diskon 35% untuk orderan custom": {
-        "spin": None,
+        "spin": "images/spin_35.jpg",
         "claimed": None,
     },
 
     "🎁 Free claim catalog costless": {
-        "spin": None,
+        "spin": "images/spin_costless.jpg",
         "claimed": None,
     },
 
     "🚀 1 Daily Boost": {
-        "spin": None,
+        "spin": "images/spin_daily.jpg",
         "claimed": None,
     },
 
     "🚀 1 Weekly Boost": {
-        "spin": None,
+        "spin": "images/spin_weekly.jpg",
         "claimed": None,
     },
 
     "🚀 1 Monthly Boost": {
-        "spin": None,
+        "spin": "images/spin_monthly.jpg",
         "claimed": None,
     },
 
     "⭐ Gift 15 Stars": {
-        "spin": None,
+        "spin": "images/spin_15s.jpg",
         "claimed": None,
     },
 
     "⭐ Gift 25 Stars": {
-        "spin": None,
+        "spin": "images/spin_25s.jpg",
         "claimed": None,
     },
 
     "⭐ Gift 50 Stars": {
-        "spin": None,
+        "spin": "images/spin_50s.jpg",
         "claimed": None,
     },
 }
-
 
 # ==========================================
 # PERSISTENT STORAGE
@@ -139,10 +133,10 @@ def save_all_chat_prizes(all_chat_prizes):
 
 all_chat_prizes = load_all_chat_prizes()
 
-
 # ==========================================
 # GET / CREATE INVENTORY FOR CHAT
 # ==========================================
+
 
 def get_chat_prizes(chat_id):
     chat_key = str(chat_id)
@@ -157,6 +151,7 @@ def get_chat_prizes(chat_id):
 # ==========================================
 # ADMIN CHECK
 # ==========================================
+
 
 def is_admin(user_id):
     return user_id in ADMIN_IDS
@@ -179,6 +174,7 @@ async def deny_access(update: Update):
 # BUTTONS
 # ==========================================
 
+
 def spin_keyboard():
     return InlineKeyboardMarkup(
         [
@@ -200,6 +196,7 @@ def spin_keyboard():
 # AVAILABLE PRIZES
 # ==========================================
 
+
 def get_available_prizes(chat_id):
     chat_prizes = get_chat_prizes(chat_id)
 
@@ -213,6 +210,7 @@ def get_available_prizes(chat_id):
 # ==========================================
 # SEND NEW SPIN
 # ==========================================
+
 
 async def send_new_spin_message(
     chat_id,
@@ -252,7 +250,6 @@ async def send_new_spin_message(
         image_path
         and os.path.exists(image_path)
     ):
-
         with open(
             image_path,
             "rb"
@@ -271,7 +268,6 @@ async def send_new_spin_message(
             )
 
     else:
-
         message = await context.bot.send_message(
             chat_id=chat_id,
             text=(
@@ -294,11 +290,11 @@ async def send_new_spin_message(
 # /START
 # ==========================================
 
+
 async def start(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
-
     if not is_admin(
         update.effective_user.id
     ):
@@ -316,11 +312,11 @@ async def start(
 # /SPIN
 # ==========================================
 
+
 async def spin(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
-
     if not is_admin(
         update.effective_user.id
     ):
@@ -344,11 +340,11 @@ async def spin(
 # /RELOAD
 # ==========================================
 
+
 async def reload_prizes(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
-
     if not is_admin(
         update.effective_user.id
     ):
@@ -385,11 +381,11 @@ async def reload_prizes(
 # BUTTON HANDLER
 # ==========================================
 
+
 async def button_handler(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
-
     query = update.callback_query
 
     if not is_admin(
@@ -436,11 +432,11 @@ async def button_handler(
 # NEXT
 # ==========================================
 
+
 async def next_spin(
     query,
     context,
 ):
-
     try:
         await query.edit_message_reply_markup(
             reply_markup=None
@@ -460,11 +456,11 @@ async def next_spin(
 # CLAIM
 # ==========================================
 
+
 async def claim_prize(
     query,
     context,
 ):
-
     selected_prize = (
         context.user_data.get(
             "current_prize"
@@ -491,7 +487,6 @@ async def claim_prize(
         )
         <= 0
     ):
-
         await query.edit_message_reply_markup(
             reply_markup=None
         )
@@ -528,11 +523,11 @@ async def claim_prize(
 # RECEIVE USERNAME
 # ==========================================
 
+
 async def receive_username(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
-
     if not is_admin(
         update.effective_user.id
     ):
@@ -557,7 +552,6 @@ async def receive_username(
     chat_id = update.effective_chat.id
 
     if not selected_prize:
-
         context.user_data[
             "waiting_for_username"
         ] = False
@@ -574,7 +568,6 @@ async def receive_username(
         )
         != chat_id
     ):
-
         await update.message.reply_text(
             "⚠️ Please finish the active claim "
             "in the original chat."
@@ -593,7 +586,6 @@ async def receive_username(
         )
         <= 0
     ):
-
         context.user_data[
             "waiting_for_username"
         ] = False
@@ -654,7 +646,6 @@ async def receive_username(
     # ======================================
 
     if remaining <= 0:
-
         stock_message = (
             "🚫 This prize is now sold out "
             "in this chat and has been removed "
@@ -662,7 +653,6 @@ async def receive_username(
         )
 
     else:
-
         stock_message = (
             f"📦 Remaining slots for this prize: "
             f"*{remaining}*"
@@ -688,7 +678,6 @@ async def receive_username(
             claimed_image
         )
     ):
-
         with open(
             claimed_image,
             "rb"
@@ -701,7 +690,6 @@ async def receive_username(
             )
 
     else:
-
         await update.message.reply_text(
             claimed_caption,
             parse_mode="Markdown",
@@ -712,8 +700,8 @@ async def receive_username(
 # MAIN
 # ==========================================
 
-def main():
 
+def main():
     token = os.getenv(
         "BOT_TOKEN"
     )
