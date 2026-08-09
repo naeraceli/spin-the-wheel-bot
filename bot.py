@@ -46,47 +46,47 @@ INITIAL_PRIZES = {
 
 PRIZE_IMAGES = {
     "🎟️ Voucher diskon 25% untuk orderan custom": {
-        "spin": "images/spin_25.jpg",
+        "spin": "images/spin_25.png",
         "claimed": None,
     },
 
     "🎟️ Voucher diskon 35% untuk orderan custom": {
-        "spin": "images/spin_35.jpg",
+        "spin": "images/spin_35.png",
         "claimed": None,
     },
 
     "🎁 Free claim catalog costless": {
-        "spin": "images/spin_costless.jpg",
+        "spin": "images/spin_costless.png",
         "claimed": None,
     },
 
     "🚀 1 Daily Boost": {
-        "spin": "images/spin_daily.jpg",
+        "spin": "images/spin_daily.png",
         "claimed": None,
     },
 
     "🚀 1 Weekly Boost": {
-        "spin": "images/spin_weekly.jpg",
+        "spin": "images/spin_weekly.png",
         "claimed": None,
     },
 
     "🚀 1 Monthly Boost": {
-        "spin": "images/spin_monthly.jpg",
+        "spin": "images/spin_monthly.png",
         "claimed": None,
     },
 
     "⭐ Gift 15 Stars": {
-        "spin": "images/spin_15s.jpg",
+        "spin": "images/spin_15s.png",
         "claimed": None,
     },
 
     "⭐ Gift 25 Stars": {
-        "spin": "images/spin_25s.jpg",
+        "spin": "images/spin_25s.png",
         "claimed": None,
     },
 
     "⭐ Gift 50 Stars": {
-        "spin": "images/spin_50s.jpg",
+        "spin": "images/spin_50s.png",
         "claimed": None,
     },
 }
