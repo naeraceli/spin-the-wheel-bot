@@ -3,7 +3,11 @@ import os
 import random
 from datetime import datetime, timezone
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Update,
+)
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -95,7 +99,10 @@ PRIZE_IMAGES = {
 # PERSISTENT STORAGE
 # =========================================================
 
-DATA_DIR = os.getenv("DATA_DIR", "/data")
+DATA_DIR = os.getenv(
+    "DATA_DIR",
+    "/data",
+)
 
 PRIZES_FILE = os.path.join(
     DATA_DIR,
@@ -112,38 +119,28 @@ CLAIMS_FILE = os.path.join(
     "claim_history.json",
 )
 
+SETTINGS_FILE = os.path.join(
+    DATA_DIR,
+    "bot_settings.json",
+)
+
 
 def ensure_data_dir():
-    os.makedirs(DATA_DIR, exist_ok=True)
+    os.makedirs(
+        DATA_DIR,
+        exist_ok=True,
+    )
 
 
-def load_json(file_path, default):
+def save_json(
+    file_path,
+    data,
+):
     ensure_data_dir()
 
-    if not os.path.exists(file_path):
-        save_json(file_path, default)
-        return default
-
-    try:
-        with open(
-            file_path,
-            "r",
-            encoding="utf-8",
-        ) as file:
-            return json.load(file)
-
-    except (
-        json.JSONDecodeError,
-        OSError,
-    ):
-        save_json(file_path, default)
-        return default
-
-
-def save_json(file_path, data):
-    ensure_data_dir()
-
-    temporary_file = file_path + ".tmp"
+    temporary_file = (
+        file_path + ".tmp"
+    )
 
     with open(
         temporary_file,
@@ -163,6 +160,40 @@ def save_json(file_path, data):
     )
 
 
+def load_json(
+    file_path,
+    default,
+):
+    ensure_data_dir()
+
+    if not os.path.exists(
+        file_path
+    ):
+        save_json(
+            file_path,
+            default,
+        )
+        return default
+
+    try:
+        with open(
+            file_path,
+            "r",
+            encoding="utf-8",
+        ) as file:
+            return json.load(file)
+
+    except (
+        json.JSONDecodeError,
+        OSError,
+    ):
+        save_json(
+            file_path,
+            default,
+        )
+        return default
+
+
 # =========================================================
 # LOAD DATABASES
 # =========================================================
@@ -180,6 +211,13 @@ participants = load_json(
 claim_history = load_json(
     CLAIMS_FILE,
     [],
+)
+
+settings = load_json(
+    SETTINGS_FILE,
+    {
+        "announcement_group_id": None,
+    },
 )
 
 
@@ -212,20 +250,21 @@ async def admin_only(update):
 def get_available_prizes():
     return [
         prize
-        for prize, quantity in global_prizes.items()
+        for prize, quantity
+        in global_prizes.items()
         if quantity > 0
     ]
-
-
-def total_remaining_prizes():
-    return sum(
-        global_prizes.values()
-    )
 
 
 def total_initial_prizes():
     return sum(
         INITIAL_PRIZES.values()
+    )
+
+
+def total_remaining_prizes():
+    return sum(
+        global_prizes.values()
     )
 
 
@@ -246,40 +285,8 @@ def save_participants():
     )
 
 
-def participant_can_play(user_id):
-    participant = get_participant(
-        user_id
-    )
-
-    if not participant:
-        return False
-
-    if participant.get(
-        "status"
-    ) != "active":
-        return False
-
-    if participant.get(
-        "claimed",
-        False,
-    ):
-        return False
-
-    max_spins = participant.get(
-        "max_spins",
-        0,
-    )
-
-    spins_used = participant.get(
-        "spins_used",
-        0,
-    )
-
-    return spins_used < max_spins
-
-
-def participant_remaining_spins(
-    user_id
+def get_remaining_spins(
+    user_id,
 ):
     participant = get_participant(
         user_id
@@ -299,6 +306,53 @@ def participant_remaining_spins(
             0,
         ),
     )
+
+
+def can_start_spin(
+    user_id,
+):
+    participant = get_participant(
+        user_id
+    )
+
+    if not participant:
+        return False
+
+    if participant.get(
+        "status"
+    ) != "active":
+        return False
+
+    if participant.get(
+        "claimed",
+        False,
+    ):
+        return False
+
+    return (
+        participant.get(
+            "spins_used",
+            0,
+        )
+        < participant.get(
+            "max_spins",
+            0,
+        )
+    )
+
+
+# =========================================================
+# USER DISPLAY NAME
+# =========================================================
+
+def get_user_display_name(user):
+    if user.username:
+        return f"@{user.username}"
+
+    if user.full_name:
+        return user.full_name
+
+    return str(user.id)
 
 
 # =========================================================
@@ -346,23 +400,25 @@ async def start(
     user = update.effective_user
     user_id = user.id
 
-    participant = get_participant(
-        user_id
-    )
-
+    # Admin
     if is_admin(user_id):
         await update.message.reply_text(
             "👑 *Spin the Wheel Admin Panel*\n\n"
-            "Commands:\n"
-            "/grant USER_ID SPINS\n"
-            "/status USER_ID\n"
-            "/revoke USER_ID\n"
-            "/claims\n"
-            "/reload\n"
-            "/clearclaims",
+            "Available commands:\n\n"
+            "`/grant USER_ID SPINS`\n"
+            "`/status USER_ID`\n"
+            "`/revoke USER_ID`\n"
+            "`/setgroup`\n"
+            "`/claims`\n"
+            "`/reload`\n"
+            "`/clearclaims`",
             parse_mode="Markdown",
         )
         return
+
+    participant = get_participant(
+        user_id
+    )
 
     if not participant:
         await update.message.reply_text(
@@ -381,7 +437,7 @@ async def start(
         )
         return
 
-    remaining = participant_remaining_spins(
+    remaining = get_remaining_spins(
         user_id
     )
 
@@ -395,10 +451,10 @@ async def start(
 
 
 # =========================================================
-# SEND NEW SPIN
+# SPIN RESULT
 # =========================================================
 
-async def send_new_spin(
+async def perform_spin(
     user_id,
     context,
 ):
@@ -409,33 +465,9 @@ async def send_new_spin(
     if not participant:
         return
 
-    if not participant_can_play(
+    if not can_start_spin(
         user_id
     ):
-        remaining = participant_remaining_spins(
-            user_id
-        )
-
-        if participant.get(
-            "claimed",
-            False,
-        ):
-            text = (
-                "🔒 *Your session has ended.*\n\n"
-                "A prize has already been claimed."
-            )
-        else:
-            text = (
-                "🚫 *No spins remaining.*\n\n"
-                "You have reached your maximum number of spins."
-            )
-
-        await context.bot.send_message(
-            chat_id=user_id,
-            text=text,
-            parse_mode="Markdown",
-        )
-
         return
 
     available_prizes = (
@@ -457,11 +489,52 @@ async def send_new_spin(
         available_prizes
     )
 
+    # ======================================
+    # COUNT THIS SPIN
+    # ======================================
+
+    participant[
+        "spins_used"
+    ] += 1
+
     participant[
         "current_prize"
     ] = selected_prize
 
     save_participants()
+
+    spins_used = participant[
+        "spins_used"
+    ]
+
+    max_spins = participant[
+        "max_spins"
+    ]
+
+    is_final_spin = (
+        spins_used >= max_spins
+    )
+
+    # ======================================
+    # FINAL SPIN = AUTO CLAIM
+    # ======================================
+
+    if is_final_spin:
+        await auto_claim_prize(
+            user_id,
+            selected_prize,
+            context,
+        )
+        return
+
+    # ======================================
+    # NORMAL SPIN
+    # ======================================
+
+    remaining = (
+        max_spins
+        - spins_used
+    )
 
     image_path = (
         PRIZE_IMAGES
@@ -472,16 +545,11 @@ async def send_new_spin(
         .get("spin")
     )
 
-    remaining = participant_remaining_spins(
-        user_id
-    )
-
     caption = (
-        "🎡 *SPINNING...*\n\n"
+        "🎡 *SPIN RESULT!*\n\n"
         f"🎁 *Your prize:* {selected_prize}\n\n"
-        f"🔢 Spins remaining after this: "
-        f"*{remaining}*\n\n"
-        "What would you like to do?"
+        f"🔢 Spins remaining: *{remaining}*\n\n"
+        "Choose an action below."
     )
 
     if (
@@ -524,38 +592,46 @@ async def spin(
 
     if is_admin(user_id):
         await update.message.reply_text(
-            "👑 Admin accounts cannot use participant Spin sessions."
+            "👑 Admin accounts cannot use participant sessions."
         )
         return
 
-    if not participant_can_play(
+    participant = get_participant(
+        user_id
+    )
+
+    if not participant:
+        await update.message.reply_text(
+            "⚠️ You don't have an active Spin session."
+        )
+        return
+
+    if participant.get(
+        "claimed",
+        False,
+    ):
+        await update.message.reply_text(
+            "🔒 Your session has already ended because you claimed a prize."
+        )
+        return
+
+    if participant.get(
+        "status"
+    ) != "active":
+        await update.message.reply_text(
+            "🔒 Your Spin session is no longer active."
+        )
+        return
+
+    if not can_start_spin(
         user_id
     ):
-        participant = get_participant(
-            user_id
-        )
-
-        if not participant:
-            await update.message.reply_text(
-                "⚠️ You don't have an active Spin session."
-            )
-            return
-
-        if participant.get(
-            "claimed",
-            False,
-        ):
-            await update.message.reply_text(
-                "🔒 Your session has already ended because you claimed a prize."
-            )
-            return
-
         await update.message.reply_text(
-            "🚫 You have reached your maximum number of spins."
+            "🚫 You have no spins remaining."
         )
         return
 
-    await send_new_spin(
+    await perform_spin(
         user_id,
         context,
     )
@@ -573,26 +649,54 @@ async def button_handler(
 
     user_id = query.from_user.id
 
-    participant = get_participant(
-        user_id
-    )
+    # ======================================
+    # START SPIN BUTTON
+    # ======================================
 
     if query.data == "start_spin":
-        await query.answer()
-
-        if not participant_can_play(
+        participant = get_participant(
             user_id
-        ):
-            await query.message.reply_text(
-                "🚫 You cannot start a Spin session."
+        )
+
+        if not participant:
+            await query.answer(
+                "⚠️ You don't have an active session.",
+                show_alert=True,
             )
             return
 
-        await send_new_spin(
+        if not can_start_spin(
+            user_id
+        ):
+            await query.answer(
+                "🚫 You cannot spin anymore.",
+                show_alert=True,
+            )
+            return
+
+        await query.answer()
+
+        try:
+            await query.edit_message_reply_markup(
+                reply_markup=None
+            )
+        except Exception:
+            pass
+
+        await perform_spin(
             user_id,
             context,
         )
+
         return
+
+    # ======================================
+    # NORMAL PARTICIPANT BUTTONS
+    # ======================================
+
+    participant = get_participant(
+        user_id
+    )
 
     if not participant:
         await query.answer(
@@ -615,27 +719,37 @@ async def button_handler(
         False,
     ):
         await query.answer(
-            "🔒 Your session has already ended.",
+            "🔒 Your session has ended.",
             show_alert=True,
         )
         return
 
-    if not participant_can_play(
-        user_id
-    ):
+    selected_prize = participant.get(
+        "current_prize"
+    )
+
+    if not selected_prize:
         await query.answer(
-            "🚫 You have no spins remaining.",
+            "⚠️ There is no active prize.",
             show_alert=True,
         )
         return
+
+    # ======================================
+    # NEXT
+    # ======================================
 
     if query.data == "next_spin":
-        await query.answer()
+        if not can_start_spin(
+            user_id
+        ):
+            await query.answer(
+                "🚫 You have no spins remaining.",
+                show_alert=True,
+            )
+            return
 
-        # NEXT consumes one spin.
-        participant[
-            "spins_used"
-        ] += 1
+        await query.answer()
 
         participant[
             "current_prize"
@@ -643,39 +757,25 @@ async def button_handler(
 
         save_participants()
 
-        # If this was the last spin,
-        # end the session.
-        if not participant_can_play(
-            user_id
-        ):
-            participant[
-                "status"
-            ] = "ended"
-
-            save_participants()
-
+        try:
             await query.edit_message_reply_markup(
                 reply_markup=None
             )
+        except Exception:
+            pass
 
-            await query.message.reply_text(
-                "🚫 *Spin limit reached.*\n\n"
-                "You have used all of your available spins.",
-                parse_mode="Markdown",
-            )
-
-            return
-
-        await query.edit_message_reply_markup(
-            reply_markup=None
-        )
-
-        await send_new_spin(
+        await perform_spin(
             user_id,
             context,
         )
 
-    elif query.data == "claim_prize":
+        return
+
+    # ======================================
+    # CLAIM
+    # ======================================
+
+    if query.data == "claim_prize":
         await claim_prize(
             query,
             context,
@@ -698,7 +798,7 @@ async def claim_prize(
 
     if not participant:
         await query.answer(
-            "⚠️ You don't have an active session.",
+            "⚠️ No active session.",
             show_alert=True,
         )
         return
@@ -709,7 +809,7 @@ async def claim_prize(
 
     if not selected_prize:
         await query.answer(
-            "⚠️ There is no active prize to claim.",
+            "⚠️ There is no active prize.",
             show_alert=True,
         )
         return
@@ -733,8 +833,94 @@ async def claim_prize(
 
         return
 
+    await query.answer(
+        "🎉 Prize claimed!",
+        show_alert=True,
+    )
+
+    try:
+        await query.edit_message_reply_markup(
+            reply_markup=None
+        )
+    except Exception:
+        pass
+
+    await finalize_claim(
+        user_id,
+        selected_prize,
+        context,
+        automatic=False,
+    )
+
+
+# =========================================================
+# AUTO CLAIM FINAL SPIN
+# =========================================================
+
+async def auto_claim_prize(
+    user_id,
+    selected_prize,
+    context,
+):
+    await finalize_claim(
+        user_id,
+        selected_prize,
+        context,
+        automatic=True,
+    )
+
+
+# =========================================================
+# FINALIZE CLAIM
+# =========================================================
+
+async def finalize_claim(
+    user_id,
+    selected_prize,
+    context,
+    automatic=False,
+):
+    participant = get_participant(
+        user_id
+    )
+
+    if not participant:
+        return
+
+    current_stock = global_prizes.get(
+        selected_prize,
+        0,
+    )
+
     # ======================================
-    # REMOVE GLOBAL STOCK
+    # PRIZE ALREADY GONE
+    # ======================================
+
+    if current_stock <= 0:
+        participant[
+            "current_prize"
+        ] = None
+
+        participant[
+            "status"
+        ] = "active"
+
+        save_participants()
+
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=(
+                "⚠️ Unfortunately, this prize "
+                "was claimed by another participant "
+                "before it could be confirmed.\n\n"
+                "Please contact the event admin."
+            ),
+        )
+
+        return
+
+    # ======================================
+    # REDUCE GLOBAL STOCK
     # ======================================
 
     global_prizes[
@@ -777,18 +963,29 @@ async def claim_prize(
     # CLAIM HISTORY
     # ======================================
 
-    user = query.from_user
+    user = None
 
-    username = (
-        f"@{user.username}"
-        if user.username
-        else user.full_name
-    )
+    try:
+        user = await context.bot.get_chat(
+            user_id
+        )
+    except Exception:
+        pass
+
+    if user:
+        display_name = get_user_display_name(
+            user
+        )
+    else:
+        display_name = str(
+            user_id
+        )
 
     claim_record = {
         "user_id": user_id,
-        "username": username,
+        "username": display_name,
         "prize": selected_prize,
+        "automatic": automatic,
         "claimed_at": datetime.now(
             timezone.utc
         ).isoformat(),
@@ -804,33 +1001,17 @@ async def claim_prize(
     )
 
     # ======================================
-    # REMOVE BUTTONS
+    # PRIVATE RESULT
     # ======================================
 
-    try:
-        await query.edit_message_reply_markup(
-            reply_markup=None
+    if automatic:
+        title = (
+            "🏁 *FINAL SPIN — AUTO CLAIMED!*"
         )
-    except Exception:
-        pass
-
-    await query.answer(
-        "🎉 Prize claimed!",
-        show_alert=True,
-    )
-
-    # ======================================
-    # CLAIM MESSAGE
-    # ======================================
-
-    claimed_image = (
-        PRIZE_IMAGES
-        .get(
-            selected_prize,
-            {},
+    else:
+        title = (
+            "🎉 *PRIZE CLAIMED!*"
         )
-        .get("claimed")
-    )
 
     if remaining_stock <= 0:
         stock_message = (
@@ -842,11 +1023,20 @@ async def claim_prize(
             f"*{remaining_stock}*"
         )
 
-    caption = (
-        "🎉 *CLAIMED!*\n\n"
+    private_caption = (
+        f"{title}\n\n"
         f"🎁 *Prize:* {selected_prize}\n\n"
         f"{stock_message}\n\n"
         "🔒 Your Spin session has ended."
+    )
+
+    claimed_image = (
+        PRIZE_IMAGES
+        .get(
+            selected_prize,
+            {},
+        )
+        .get("claimed")
     )
 
     if (
@@ -863,15 +1053,76 @@ async def claim_prize(
             await context.bot.send_photo(
                 chat_id=user_id,
                 photo=image_file,
-                caption=caption,
+                caption=private_caption,
                 parse_mode="Markdown",
             )
 
     else:
         await context.bot.send_message(
             chat_id=user_id,
-            text=caption,
+            text=private_caption,
             parse_mode="Markdown",
+        )
+
+    # ======================================
+    # GROUP ANNOUNCEMENT
+    # ======================================
+
+    await announce_claim_to_group(
+        user_id,
+        display_name,
+        selected_prize,
+        automatic,
+        context,
+    )
+
+
+# =========================================================
+# GROUP ANNOUNCEMENT
+# =========================================================
+
+async def announce_claim_to_group(
+    user_id,
+    display_name,
+    selected_prize,
+    automatic,
+    context,
+):
+    group_id = settings.get(
+        "announcement_group_id"
+    )
+
+    if not group_id:
+        return
+
+    if automatic:
+        header = (
+            "🏁 *FINAL SPIN — AUTO CLAIMED!*"
+        )
+    else:
+        header = (
+            "🎉 *PRIZE CLAIMED!*"
+        )
+
+    message = (
+        f"{header}\n\n"
+        f"👤 *Participant:* {display_name}\n"
+        f"🆔 User ID: `{user_id}`\n"
+        f"🎁 *Prize:* {selected_prize}\n\n"
+        "Congratulations! 🥳🎡"
+    )
+
+    try:
+        await context.bot.send_message(
+            chat_id=group_id,
+            text=message,
+            parse_mode="Markdown",
+        )
+
+    except Exception as error:
+        print(
+            "Failed to announce claim "
+            f"to group: {error}"
         )
 
 
@@ -923,7 +1174,6 @@ async def grant(
         "user_id": target_user_id,
         "max_spins": max_spins,
         "spins_used": 0,
-        "remaining_spins": max_spins,
         "status": "active",
         "claimed": False,
         "current_prize": None,
@@ -1080,6 +1330,49 @@ async def revoke(
 
 
 # =========================================================
+# /SETGROUP
+# =========================================================
+
+async def set_group(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    if not await admin_only(update):
+        return
+
+    chat = update.effective_chat
+
+    # Only useful inside a group.
+    if chat.type not in (
+        "group",
+        "supergroup",
+    ):
+        await update.message.reply_text(
+            "⚠️ Use `/setgroup` inside the group "
+            "where you want claim announcements "
+            "to be sent.",
+            parse_mode="Markdown",
+        )
+        return
+
+    settings[
+        "announcement_group_id"
+    ] = chat.id
+
+    save_json(
+        SETTINGS_FILE,
+        settings,
+    )
+
+    await update.message.reply_text(
+        "📢 *ANNOUNCEMENT GROUP SET!*\n\n"
+        "Claim results will now be automatically "
+        "announced in this group. 🎉",
+        parse_mode="Markdown",
+    )
+
+
+# =========================================================
 # /CLAIMS
 # =========================================================
 
@@ -1107,15 +1400,35 @@ async def claims(
         claim_history,
         start=1,
     ):
+        automatic_text = (
+            " 🏁"
+            if record.get(
+                "automatic",
+                False,
+            )
+            else ""
+        )
+
         lines.append(
-            f"{index}. {record['username']} — "
+            f"{index}. "
+            f"{record['username']} — "
             f"{record['prize']}"
+            f"{automatic_text}"
         )
 
     lines.append("")
+
     lines.append(
         f"🎁 Total claimed: "
-        f"*{len(claim_history)}/{total_initial_prizes()}*"
+        f"*{len(claim_history)}/"
+        f"{total_initial_prizes()}*"
+    )
+
+    lines.append("")
+
+    lines.append(
+        f"📦 Remaining global slots: "
+        f"*{total_remaining_prizes()}*"
     )
 
     await update.message.reply_text(
@@ -1201,7 +1514,10 @@ def main():
         .build()
     )
 
-    # Participant commands
+    # ======================================
+    # PARTICIPANT COMMANDS
+    # ======================================
+
     application.add_handler(
         CommandHandler(
             "start",
@@ -1216,7 +1532,10 @@ def main():
         )
     )
 
-    # Admin commands
+    # ======================================
+    # ADMIN COMMANDS
+    # ======================================
+
     application.add_handler(
         CommandHandler(
             "grant",
@@ -1235,6 +1554,13 @@ def main():
         CommandHandler(
             "revoke",
             revoke,
+        )
+    )
+
+    application.add_handler(
+        CommandHandler(
+            "setgroup",
+            set_group,
         )
     )
 
@@ -1259,7 +1585,10 @@ def main():
         )
     )
 
-    # Buttons
+    # ======================================
+    # BUTTONS
+    # ======================================
+
     application.add_handler(
         CallbackQueryHandler(
             button_handler,
